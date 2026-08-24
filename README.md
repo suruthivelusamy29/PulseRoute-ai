@@ -7,18 +7,18 @@ An intelligent, local-first emergency healthcare coordination and clinical hando
 ## 🚀 Features
 
 ### Core Functionality
-*   **Proactive Intake Management**: Automated hospital trauma bay pre-allocation and ER system initialization before vehicle arrival [1.1].
-*   **Offline-First Records**: Fault-tolerant client-side persistence and local synchronization mechanisms utilizing browser-level cache meshes [1.1].
-*   **3D Telemetry Mapping**: Procedural 3D route trajectory HUD canvas utilizing explicit linear vector path updates [1.1].
-*   **Real-Time Data Dissemination**: High-velocity bi-directional server synchronization using continuous socket event pipelines [1.1].
+*   **Proactive Intake Management**: Automated hospital trauma bay pre-allocation and ER system initialization before vehicle arrival .
+*   **Offline-First Records**: Fault-tolerant client-side persistence and local synchronization mechanisms utilizing browser-level cache meshes.
+*   **3D Telemetry Mapping**: Procedural 3D route trajectory HUD canvas utilizing explicit linear vector path updates.
+*   **Real-Time Data Dissemination**: High-velocity bi-directional server synchronization using continuous socket event pipelines.
 *   **Resilient Media Slicing**: Segmented binary chunk ingestion separating large high-resolution scans into sequential 512KB packets.
-*   **Fluid Supply Diagnostics**: Percentage-calculated blood bank monitoring modules with dynamic CSS fill keyframes [1.1].
+*   **Fluid Supply Diagnostics**: Percentage-calculated blood bank monitoring modules with dynamic CSS fill keyframes.
 
 ### AI & Machine Learning (Clinical Decision Support)
-*   **AI Pre-Arrival Operational Briefing**: Condition-specific clinical checklist generation mapping abnormal vitals parameters automatically [1.1].
+*   **AI Pre-Arrival Operational Briefing**: Condition-specific clinical checklist generation mapping abnormal vitals parameters automatically.
 *   **AI Triage Severity Classifier**: Automated patient mapping onto a dynamic 1-to-5 Emergency Severity Index (ESI) grid view.
 *   **AI EMS Radio Script Generator**: In-transit synthesis of raw field metrics into a high-density clinical verbal script for radio operators.
-*   **Local Edge Fallback Inference**: Localized rule-based mock routing engines automatically taking over during network dead zones [1.1].
+*   **Local Edge Fallback Inference**: Localized rule-based mock routing engines automatically taking over during network dead zones.
 
 ---
 
@@ -52,15 +52,15 @@ hospital/
 
 ### Frontend
 *   **Framework**: Next.js 15 with TypeScript
-*   **3D Graphics Engine**: Three.js via `@react-three/fiber` and `@react-three/drei` [1.1]
+*   **3D Graphics Engine**: Three.js via `@react-three/fiber` and `@react-three/drei`.
 *   **Local Cache Layer**: Dexie.js (IndexedDB abstraction data-mesh)
 *   **Charts & Visual Analytics**: Recharts (Continuous Heart Rate and SpO₂ data timelines)
-*   **Styling Engine**: Tailwind CSS with custom background keyframes (`waveShift`) [1.1]
+*   **Styling Engine**: Tailwind CSS with custom background keyframes (`waveShift`).
 *   **HTTP Client**: Axios
 
 ### Backend
 *   **Framework**: Node.js with Express REST API router
-*   **Real-Time Protocols**: Socket.io bi-directional server connection managers [1.1]
+*   **Real-Time Protocols**: Socket.io bi-directional server connection managers
 *   **Database Integration**: Hybrid storage pattern linking local client state matrices with server file caches
 *   **Security Configuration**: Server-side proxy masking environment keys to protect application credentials
 
@@ -92,7 +92,7 @@ cd PulseRoute-ai
     AI_API_URL=https://openai.com
     AI_MODEL=gpt-4o-mini
     ```
-    *Note: If `AI_API_KEY` is omitted or empty, the application automatically triggers its local rule-based mock routing handler. This allows the 3D grid movements, countdown alerts, and pre-arrival briefs to function perfectly offline without throwing missing configuration errors [1.1].*
+    *Note: If `AI_API_KEY` is omitted or empty, the application automatically triggers its local rule-based mock routing handler. This allows the 3D grid movements, countdown alerts, and pre-arrival briefs to function perfectly offline without throwing missing configuration errors.*
 
 3.  **Boot the Backend Synchronization Server:**
     ```bash
@@ -131,7 +131,7 @@ This monorepo supports independent cloud deployment configurations:
 ## 📱 Application Pages
 *   **Landing Dashboard (`/`)** - Central gateway routing users to field paramedic terminals or hospital command configurations.
 *   **Paramedic View (`/paramedic`)** - Local-first offline intake client containing the 3-tab vitals form, chunked image file attachments, and radio script reviews.
-*   **Hospital ER Command Center (`/hospital`)** - Tactical real-time monitoring HUD tracking blood inventories, bed states, and moving 3D ambulance telemetry grids [1.1].
+*   **Hospital ER Command Center (`/hospital`)** - Tactical real-time monitoring HUD tracking blood inventories, bed states, and moving 3D ambulance telemetry grids.
 *   **Patient Profile Insight (`/patient/[id]`)** - Extended clinical history lookup with transfusion warning flags and color-coded interactive ESI triage maps.
 
 ---
