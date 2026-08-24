@@ -17,18 +17,20 @@ AI & Machine Learning (Clinical Decision Support)
 
 ## 🏗️ Architecture
 
+## 🏗️ Architecture
+
 This is a full-stack, local-first unified architecture structured as follows:
 
-
+```text
 hospital/
 ├── app/                      # Next.js Client Interface (App Router)
 │   ├── hospital/
-│   │   └── page.tsx          # ER Command Center dashboard UI (Sockets, 3D radar grid) [1.1]
+│   │   └── page.tsx          # ER Command Center dashboard UI (Sockets, 3D radar grid)
 │   ├── paramedic/        
 │   │   └── page.tsx          # Ambulance field intake multi-tab forms (IndexedDB logic)
 │   ├── patient/[id]/
 │   │   └── page.tsx          # Deep clinical analysis, ESI 1-5 triage grids, & metrics
-│   └── globals.css           # Global core layout styles (Includes custom waveShift keyframes) [1.1]
+│   └── globals.css           # Global core layout styles (Includes custom waveShift keyframes)
 ├── components/3d/            # Reusable Isolated Three.js React Three Fiber Modules
 │   ├── BedMapVisual.tsx      # Interactive 3D spatial emergency room bed allocation map
 │   ├── HeartVisual.tsx       # 3D cardiovascular asset pacing visual dilation matching live BPM
@@ -37,6 +39,8 @@ hospital/
 │   └── ai.ts                 # Strongly typed fetch wrapper linking UI buttons to backend proxies
 ├── uploads/                  # Secure folder directory storing reassembled paramedic scans
 └── server.ts                 # Secure Node.js + Express backend router & Socket.io event hub
+```
+
 
 🛠️ Tech Stack
 Frontend
