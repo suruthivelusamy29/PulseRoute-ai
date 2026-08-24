@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { io, type Socket } from "socket.io-client";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 import {
   AlertTriangle, Radio, User, Bed, Droplets,
   Ambulance, Activity, ChevronRight,
@@ -17,6 +20,156 @@ const BedMapVisual = dynamic(() => import("@/components/3d/BedMapVisual"), { ssr
   loading: () => <Loader text="Bed Map" /> });
 const LiveVitalsChart = dynamic(() => import("@/components/3d/LiveVitalsChart"), { ssr: false,
   loading: () => <Loader text="Vitals Chart" /> });
+
+// ── ETA urgency helpers ─────────────────────────────────────────────────────
+type UrgencyLevel = "stable" | "alert" | "urgent" | "crisis";
+
+function etaUrgency(eta: number): UrgencyLevel {
+  if (eta < 2) return "crisis";
+  if (eta < 5) return "urgent";
+  if (eta <= 10) return "alert";
+  return "stable";
+}
+
+const URGENCY_BORDER: Record<UrgencyLevel, string> = {
+  stable: "border-emerald-700",
+  alert:  "border-amber-500",
+  urgent: "border-orange-500",
+  crisis: "border-red-500 animate-pulse",
+};
+const URGENCY_LABEL: Record<UrgencyLevel, string> = {
+  stable: "🟢 Stable Tracking",
+  alert:  "🟡 Alert State",
+  urgent: "🟠 Urgent Action Required",
+  crisis: "🔴 Immediate Crisis Canopy",
+};
+const URGENCY_TEXT: Record<UrgencyLevel, string> = {
+  stable: "text-emerald-400",
+  alert:  "text-amber-400",
+  urgent: "text-orange-400",
+  crisis: "text-red-400",
+};
+
+function buildChecklist(p: LivePatient): string[] {
+  const critical = p.o2 < 90 || p.heartRate > 130;
+  if (critical) return [
+    "• Stage Trauma Bay 2 immediately",
+    "• Pre-route O-Negative cross-match blood reserves",
+    "• Disseminate alert to Trauma Core Response Group",
+    `• Prepare airway management — SpO₂ at ${p.o2}%`,
+    `• Cardiac monitoring on standby — HR ${p.heartRate} bpm`,
+  ];
+  return [
+    "• Confirm receiving bay assignment",
+    "• Verify IV access and fluid prep",
+    "• Notify on-call physician of inbound",
+    "• Stage standard trauma assessment kit",
+    "• Confirm blood type on file if available",
+  ];
+}
+
+// ── Telemetry 3D scene ──────────────────────────────────────────────────────
+function AmbulanceNode({ eta }: { eta: number }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const matRef  = useRef<THREE.MeshStandardMaterial>(null);
+
+  // Path: outer grid edge → hospital center. t=0 → far, t=1 → center.
+  const maxEta = 15;
+  const t = useMemo(() => Math.max(0, Math.min(1, 1 - eta / maxEta)), [eta]);
+
+  // Cubic bezier control points
+  const curve = useMemo(() => new THREE.CubicBezierCurve3(
+    new THREE.Vector3(-7, 0, -7),
+    new THREE.Vector3(-3, 0.5, -2),
+    new THREE.Vector3(2, 0.5, 3),
+    new THREE.Vector3(0, 0, 0),
+  ), []);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current || !matRef.current) return;
+    const pos = curve.getPoint(t);
+    meshRef.current.position.lerp(pos, 0.08);
+    meshRef.current.rotation.y = clock.getElapsedTime() * 1.2;
+    const crisis = eta < 2;
+    const flash = crisis ? Math.abs(Math.sin(clock.getElapsedTime() * 6)) : 1;
+    matRef.current.emissive.setHex(crisis ? 0xff1111 : 0xff4400);
+    matRef.current.emissiveIntensity = flash * (crisis ? 2.5 : 1.2);
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <coneGeometry args={[0.22, 0.5, 4]} />
+      <meshStandardMaterial ref={matRef} color={eta < 2 ? "#ff2222" : "#ff6600"} emissive="#ff2200" emissiveIntensity={1.2} />
+    </mesh>
+  );
+}
+
+function TelemetryScene({ eta }: { eta: number }) {
+  const pathRef = useRef<THREE.Line | null>(null);
+
+  const curve = useMemo(() => new THREE.CubicBezierCurve3(
+    new THREE.Vector3(-7, 0, -7),
+    new THREE.Vector3(-3, 0.5, -2),
+    new THREE.Vector3(2, 0.5, 3),
+    new THREE.Vector3(0, 0, 0),
+  ), []);
+
+  const pathPoints = useMemo(() => curve.getPoints(60), [curve]);
+  const pathGeo    = useMemo(() => {
+    const g = new THREE.BufferGeometry().setFromPoints(pathPoints);
+    return g;
+  }, [pathPoints]);
+
+  useFrame(({ clock }) => {
+    if (pathRef.current) {
+      (pathRef.current.material as THREE.LineBasicMaterial).opacity =
+        0.5 + 0.3 * Math.abs(Math.sin(clock.getElapsedTime() * 1.5));
+    }
+  });
+
+  // Grid lines
+  const gridLines = useMemo(() => {
+    const lines: THREE.Vector3[][] = [];
+    for (let i = -8; i <= 8; i += 2) {
+      lines.push([new THREE.Vector3(i, 0, -8), new THREE.Vector3(i, 0, 8)]);
+      lines.push([new THREE.Vector3(-8, 0, i), new THREE.Vector3(8, 0, i)]);
+    }
+    return lines;
+  }, []);
+
+  return (
+    <>
+      <ambientLight intensity={0.3} />
+      <pointLight position={[0, 4, 0]} intensity={1.5} color="#00ffff" />
+
+      {/* Neon grid */}
+      {gridLines.map((pts, i) => {
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        return (
+          <primitive key={i} object={
+            new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x003333, transparent: true, opacity: 0.5 }))
+          } />
+        );
+      })}
+
+      {/* Route path */}
+      <primitive ref={pathRef} object={
+        new THREE.Line(pathGeo, new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.7 }))
+      } />
+
+      {/* Hospital center node */}
+      <mesh position={[0, 0, 0]}>
+        <sphereGeometry args={[0.35, 16, 16]} />
+        <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={1.5} />
+      </mesh>
+
+      {/* Ambulance unit */}
+      <AmbulanceNode eta={eta} />
+
+      <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.4} />
+    </>
+  );
+}
 
 function Loader({ text }: { text: string }) {
   return (
@@ -90,7 +243,9 @@ export default function HospitalPage() {
   const [blood] = useState<BloodStock[]>(INITIAL_BLOOD);
   const [vitalsHistory, setVitalsHistory] = useState<VitalsPoint[]>([]);
   const [activeView, setActiveView] = useState<"heart" | "beds">("heart");
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef   = useRef<Socket | null>(null);
+  const etaTickRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [liveEta, setLiveEta] = useState<number | null>(null);
 
   const refreshPatientsFromDb = useCallback(async () => {
     const all = await getAllPatients();
@@ -194,6 +349,31 @@ export default function HospitalPage() {
   useEffect(() => {
     if (selected) setVitalsHistory([{ t: Date.now(), bpm: selected.heartRate, o2: selected.o2 }]);
   }, [selected?.id]); // eslint-disable-line
+
+  // ── ETA live countdown: pick the most urgent inbound patient ───────────────
+  // Separate the "which patient is inbound" check from the tick so that the
+  // 2-second DB poll doesn't reset the countdown on every refresh.
+  const minEtaRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const inbound = patients.filter((p) => p.eta && p.eta > 0);
+    if (inbound.length === 0) {
+      minEtaRef.current = null;
+      setLiveEta(null);
+      if (etaTickRef.current) { clearInterval(etaTickRef.current); etaTickRef.current = null; }
+      return;
+    }
+    const incoming = Math.min(...inbound.map((p) => p.eta!));
+    // Only (re)start the timer when a genuinely new / different patient arrives
+    if (minEtaRef.current === incoming) return;
+    minEtaRef.current = incoming;
+    if (etaTickRef.current) clearInterval(etaTickRef.current);
+    setLiveEta(incoming);
+    etaTickRef.current = setInterval(() => {
+      setLiveEta((prev) => (prev !== null && prev > 0 ? +(prev - 1 / 60).toFixed(3) : prev));
+    }, 1000);
+    return () => { if (etaTickRef.current) { clearInterval(etaTickRef.current); etaTickRef.current = null; } };
+  }, [patients]);
 
   const availBeds = beds.filter((b) => b.status === "available").length;
   const icuFree = beds.filter((b) => b.label.startsWith("ICU") && b.status === "available").length;
@@ -317,6 +497,105 @@ export default function HospitalPage() {
           </div>
         </div>
       )}
+
+      {/* ── Readiness Command + Telemetry Grid ── */}
+      {(() => {
+        const inboundPatient = patients.find((p) => p.eta && p.eta > 0) ?? null;
+        const displayEta = liveEta ?? inboundPatient?.eta ?? null;
+        const urgency: UrgencyLevel = displayEta !== null ? etaUrgency(displayEta) : "stable";
+        const checklist = inboundPatient ? buildChecklist(inboundPatient) : null;
+
+        return (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
+
+            {/* 🚨 Readiness Command Card */}
+            <div className={`rounded-2xl bg-[#0d0d10] border-2 p-5 flex flex-col gap-3 transition-all duration-700 ${
+              inboundPatient ? URGENCY_BORDER[urgency] : "border-gray-800"
+            }`}>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">🚨 Inbound Readiness Command</p>
+                {inboundPatient && displayEta !== null && (
+                  <span className={`text-xs font-black ${URGENCY_TEXT[urgency]}`}>
+                    {URGENCY_LABEL[urgency]} · ETA {Math.max(0, displayEta).toFixed(1)}m
+                  </span>
+                )}
+              </div>
+
+              {inboundPatient && displayEta !== null ? (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-black text-white">{inboundPatient.name}</p>
+                      <p className="text-[10px] text-gray-500">
+                        {inboundPatient.age ? `${inboundPatient.age}y · ` : ""}
+                        {inboundPatient.mechanism ?? "Unknown mechanism"} · ESI {inboundPatient.esi ?? "—"}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+                      {([["HR", `${inboundPatient.heartRate}`, inboundPatient.heartRate > 130],
+                        ["SpO₂", `${inboundPatient.o2}%`, inboundPatient.o2 < 90],
+                        ["BP", inboundPatient.bp, false]] as [string, string, boolean][]).map(([k, v, warn]) => (
+                        <div key={k} className={`rounded-lg px-2 py-1 border ${
+                          warn ? "border-red-700 bg-red-950/40" : "border-gray-800 bg-gray-900/40"
+                        }`}>
+                          <span className="block text-gray-600 text-[9px]">{k}</span>
+                          <span className={`font-black text-xs ${warn ? "text-red-300" : "text-white"}`}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 mb-2">Preparation Action Checklist</p>
+                    <ul className="space-y-1">
+                      {checklist!.map((item) => (
+                        <li key={item} className={`text-xs ${
+                          item.includes("Trauma") || item.includes("O-Negative") || item.includes("Trauma Core")
+                            ? "text-red-300 font-semibold" : "text-gray-400"
+                        }`}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center py-8">
+                  <p className="text-xs text-gray-600 italic">Scanning airspace for inbound emergency transponders...</p>
+                </div>
+              )}
+
+              <p className="text-[10px] italic text-gray-600 border-t border-gray-800 pt-2 mt-auto">
+                Decision Support Matrix Only — Final operational deployment remains under direct medical officer supervision.
+              </p>
+            </div>
+
+            {/* 📡 Live Telemetry Grid */}
+            <div className="rounded-2xl bg-[#060810] border border-cyan-900/40 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-cyan-900/30">
+                <p className="text-[10px] font-black uppercase tracking-widest text-cyan-500">📡 Live Inbound Telemetry Grid</p>
+                {displayEta !== null ? (
+                  <span className="text-[10px] text-cyan-400 font-mono">
+                    T−{Math.max(0, displayEta).toFixed(1)} min
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-600">No active transponder</span>
+                )}
+              </div>
+              <div className="flex-1" style={{ height: 240 }}>
+                {displayEta !== null ? (
+                  <Canvas camera={{ position: [0, 10, 12], fov: 45 }} style={{ background: "#060810" }}>
+                    <TelemetryScene eta={displayEta} />
+                  </Canvas>
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <p className="text-xs text-gray-700 italic">Scanning airspace for inbound emergency transponders...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+          </div>
+        );
+      })()}
 
       {/* ── Main Split View ── */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
