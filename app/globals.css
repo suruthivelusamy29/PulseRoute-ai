@@ -14,3 +14,9 @@ html, body {
 .animate-flash {
   animation: flash 0.8s ease-in-out infinite;
 }
+
+@keyframes waveShift {
+  0%   { transform: translateX(-4%) scaleY(1); }
+  50%  { transform: translateX(4%)  scaleY(1.03); }
+  100% { transform: translateX(-4%) scaleY(1); }
+}

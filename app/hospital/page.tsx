@@ -104,6 +104,24 @@ function AmbulanceNode({ eta }: { eta: number }) {
   );
 }
 
+function RadarRing() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const PERIOD = 3;
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    const t = (clock.getElapsedTime() % PERIOD) / PERIOD;
+    const s = t * 15;
+    meshRef.current.scale.set(s, 1, s);
+    (meshRef.current.material as THREE.MeshBasicMaterial).opacity = 0.15 * (1 - t);
+  });
+  return (
+    <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+      <ringGeometry args={[0.9, 1.0, 64]} />
+      <meshBasicMaterial color="#00ffff" transparent opacity={0.15} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
 function TelemetryScene({ eta }: { eta: number }) {
   const pathRef = useRef<THREE.Line | null>(null);
 
@@ -165,6 +183,9 @@ function TelemetryScene({ eta }: { eta: number }) {
 
       {/* Ambulance unit */}
       <AmbulanceNode eta={eta} />
+
+      {/* Radar scanning ring */}
+      <RadarRing />
 
       <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.4} />
     </>
@@ -246,6 +267,7 @@ export default function HospitalPage() {
   const socketRef   = useRef<Socket | null>(null);
   const etaTickRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const [liveEta, setLiveEta] = useState<number | null>(null);
+  const [vitalFlash, setVitalFlash] = useState<Record<string, boolean>>({});
 
   const refreshPatientsFromDb = useCallback(async () => {
     const all = await getAllPatients();
@@ -331,6 +353,9 @@ export default function HospitalPage() {
           }
           return prev;
         });
+        const key = `${data.patientId}`;
+        setVitalFlash((prev) => ({ ...prev, [key]: true }));
+        setTimeout(() => setVitalFlash((prev) => ({ ...prev, [key]: false })), 600);
       });
 
       socket.on("hospital:resource_update", (data: { bedId: string; status: "available" | "occupied" | "reserved" }) => {
@@ -457,10 +482,48 @@ export default function HospitalPage() {
             {blood.map((b) => {
               const needed = selected?.bloodGroup === b.type;
               const low = b.units <= 3;
+              const MAX_UNITS = 15;
+              const fillPct = Math.min(100, Math.round((b.units / MAX_UNITS) * 100));
+              const fillColor = needed
+                ? "rgba(220,38,38,0.55)"
+                : low
+                ? "rgba(217,119,6,0.45)"
+                : "rgba(5,150,105,0.35)";
               return (
-                <div key={b.type} className={`rounded-lg p-2 text-center border ${needed ? "border-red-600 bg-red-950/40" : low ? "border-amber-800 bg-amber-950/20" : "border-gray-800 bg-gray-900/40"}`}>
-                  <p className={`text-xs font-black ${needed ? "text-red-300" : low ? "text-amber-400" : "text-white"}`}>{b.type}</p>
-                  <p className={`text-[10px] mt-0.5 ${low ? "text-amber-500" : "text-gray-500"}`}>{b.units}u {low ? "⚠" : ""}</p>
+                <div
+                  key={b.type}
+                  className={`relative rounded-lg overflow-hidden text-center border ${
+                    needed ? "border-red-600" : low ? "border-amber-800" : "border-gray-800"
+                  }`}
+                  style={{ minHeight: 56 }}
+                >
+                  {/* Liquid fill layer */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 transition-all duration-1000"
+                    style={{
+                      height: `${fillPct}%`,
+                      background: fillColor,
+                      animation: "waveShift 3s ease-in-out infinite",
+                    }}
+                  />
+                  {/* Wave shimmer overlay */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 pointer-events-none"
+                    style={{
+                      height: `${fillPct}%`,
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, transparent 60%)",
+                      animation: "waveShift 2s ease-in-out infinite alternate",
+                    }}
+                  />
+                  <div className="relative z-10 px-2 py-2">
+                    <p className={`text-xs font-black ${
+                      needed ? "text-red-200" : low ? "text-amber-300" : "text-white"
+                    }`}>{b.type}</p>
+                    <p className={`text-[10px] mt-0.5 ${
+                      low ? "text-amber-400" : "text-gray-400"
+                    }`}>{b.units}u {low ? "⚠" : ""}</p>
+                  </div>
                 </div>
               );
             })}
@@ -572,9 +635,10 @@ export default function HospitalPage() {
             <div className="rounded-2xl bg-[#060810] border border-cyan-900/40 overflow-hidden flex flex-col">
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-cyan-900/30">
                 <p className="text-[10px] font-black uppercase tracking-widest text-cyan-500">📡 Live Inbound Telemetry Grid</p>
-                {displayEta !== null ? (
-                  <span className="text-[10px] text-cyan-400 font-mono">
-                    T−{Math.max(0, displayEta).toFixed(1)} min
+                {inboundPatient && displayEta !== null ? (
+                  <span className="flex items-center gap-2 text-[10px] font-black font-mono tracking-widest text-cyan-300 bg-cyan-950/50 border border-cyan-800/60 rounded-full px-3 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                    TRACKING: {inboundPatient.name.toUpperCase()} • ETA {Math.max(0, displayEta).toFixed(1)} MIN
                   </span>
                 ) : (
                   <span className="text-[10px] text-gray-600">No active transponder</span>
@@ -637,12 +701,20 @@ export default function HospitalPage() {
               </div>
 
               <div className="grid grid-cols-4 gap-1.5 text-[11px] text-gray-500 mb-2">
-                {[["HR", `${p.heartRate}bpm`], ["BP", p.bp], ["O₂", `${p.o2}%`], ["GCS", p.gcs ?? "—"]].map(([k, v]) => (
-                  <div key={k}>
-                    <span className="block text-gray-700 text-[9px]">{k}</span>
-                    <span className="font-mono font-bold text-white text-xs">{v}</span>
-                  </div>
-                ))}
+                {([["HR", `${p.heartRate}bpm`], ["BP", p.bp], ["O₂", `${p.o2}%`], ["GCS", String(p.gcs ?? "—")]] as [string, string][]).map(([k, v]) => {
+                  const isLive = (k === "HR" || k === "BP") && vitalFlash[`${p.id}`];
+                  return (
+                    <div key={k} className="relative">
+                      <span className="block text-gray-700 text-[9px]">{k}</span>
+                      <span className={`font-mono font-bold text-white text-xs transition-colors duration-150 ${
+                        isLive ? "text-emerald-300" : "text-white"
+                      }`}>{v}</span>
+                      {isLive && (
+                        <span className="absolute inset-0 rounded animate-ping bg-emerald-500/20 pointer-events-none" />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {p.mechanism && (
